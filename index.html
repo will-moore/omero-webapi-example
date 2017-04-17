@@ -1,0 +1,116 @@
+
+
+<html>
+
+<style>
+
+#omero_server {
+  width: 300px
+}
+
+</style>
+
+<body>
+
+  <form id='server_form'>
+    <input id="omero_server" type="text" name="server" placeholder="http://localhost:4080/api/">
+    <button type="submit">Load</button>
+  </form>
+
+  <hr>
+
+  <div id="response">
+  </div>
+
+<script>
+
+function showResponse(text) {
+
+  document.getElementById('response').innerHTML = text;
+}
+
+function createCORSRequest(method, url) {
+  var xhr = new XMLHttpRequest();
+  if ("withCredentials" in xhr) {
+
+    // Check if the XMLHttpRequest object has a "withCredentials" property.
+    // "withCredentials" only exists on XMLHTTPRequest2 objects.
+    xhr.open(method, url, true);
+
+  } else if (typeof XDomainRequest != "undefined") {
+
+    // Otherwise, check if XDomainRequest.
+    // XDomainRequest only exists in IE, and is IE's way of making CORS requests.
+    xhr = new XDomainRequest();
+    xhr.open(method, url);
+
+  } else {
+
+    // Otherwise, CORS is not supported by the browser.
+    xhr = null;
+
+  }
+  return xhr;
+}
+
+var server_form = document.getElementById('server_form');
+
+server_form.addEventListener('submit', function(event) {
+  event.preventDefault();
+  console.log(arguments);
+  console.log(this);
+
+  // var FD = new FormData(server_form);
+  // console.log(FD);
+
+  var omeroServer = document.getElementById('omero_server').value;
+  console.log('omeroServer', omeroServer);
+
+  var xhr = createCORSRequest('GET', omeroServer);
+  if (!xhr) {
+    throw new Error('CORS not supported');
+  }
+
+  xhr.onload = function() {
+    var responseText = xhr.responseText;
+    console.log(responseText);
+    // display the response.
+    showResponse(responseText);
+  };
+
+  xhr.onerror = function() {
+    console.log('There was an error!');
+  };
+
+  // xhr.withCredentials = true;
+
+  xhr.send();
+
+  return false;
+});
+
+
+// var xhr = createCORSRequest('GET', "http://localhost:4080/api/");
+// if (!xhr) {
+//   throw new Error('CORS not supported');
+// }
+
+
+// xhr.onload = function() {
+//  var responseText = xhr.responseText;
+//  console.log(responseText);
+//  // process the response.
+//  // document.write(responseText);
+// };
+
+// xhr.onerror = function() {
+//   console.log('There was an error!');
+// };
+
+
+
+
+</script>
+
+</body>
+</html>
