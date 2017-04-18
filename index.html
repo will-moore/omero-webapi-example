@@ -4,7 +4,7 @@
 
 <style>
 
-#omero_server {
+#base_url {
   width: 300px
 }
 
@@ -12,9 +12,18 @@
 
 <body>
 
-  <form id='server_form'>
-    <input id="omero_server" type="text" name="server" placeholder="http://localhost:4080/api/">
+  <form id="server_form">
+    <input id="base_url" type="text" name="base_url" placeholder="http://localhost:4080/api/">
     <button type="submit">Load</button>
+  </form>
+
+  <hr>
+
+  <form id="login_form">
+    Server: <select id="server"></select><br>
+    Username: <input id="username" type="text" name="username" placeholder="username"><br>
+    Password: <input id="password" type="text" name="password" placeholder="password">
+    <button type="submit">Login</button>
   </form>
 
   <hr>
@@ -24,6 +33,10 @@
 
 <script>
 
+var latest_base_url;
+var base_urls;
+var csrf_token;
+
 function showResponse(text) {
 
   document.getElementById('response').innerHTML = text;
@@ -32,83 +45,116 @@ function showResponse(text) {
 function createCORSRequest(method, url) {
   var xhr = new XMLHttpRequest();
   if ("withCredentials" in xhr) {
-
     // Check if the XMLHttpRequest object has a "withCredentials" property.
     // "withCredentials" only exists on XMLHTTPRequest2 objects.
     xhr.open(method, url, true);
-
   } else if (typeof XDomainRequest != "undefined") {
-
     // Otherwise, check if XDomainRequest.
     // XDomainRequest only exists in IE, and is IE's way of making CORS requests.
     xhr = new XDomainRequest();
     xhr.open(method, url);
-
   } else {
-
     // Otherwise, CORS is not supported by the browser.
     xhr = null;
-
   }
-  return xhr;
-}
-
-var server_form = document.getElementById('server_form');
-
-server_form.addEventListener('submit', function(event) {
-  event.preventDefault();
-  console.log(arguments);
-  console.log(this);
-
-  // var FD = new FormData(server_form);
-  // console.log(FD);
-
-  var omeroServer = document.getElementById('omero_server').value;
-  console.log('omeroServer', omeroServer);
-
-  var xhr = createCORSRequest('GET', omeroServer);
-  if (!xhr) {
-    throw new Error('CORS not supported');
-  }
-
-  xhr.onload = function() {
-    var responseText = xhr.responseText;
-    console.log(responseText);
-    // display the response.
-    showResponse(responseText);
-  };
 
   xhr.onerror = function() {
     console.log('There was an error!');
   };
+  return xhr;
+}
 
-  // xhr.withCredentials = true;
+function makeJSONRequest(method, url, callback, data) {
+  console.log(method, url);
+  var xhr = createCORSRequest(method, url);
 
-  xhr.send();
+  xhr.onload = function() {
+    var responseText = xhr.responseText;
+    var jsonResponse = JSON.parse(responseText);
+    console.log(jsonResponse);
+    // handle the response.
+    if (callback) {
+      callback(jsonResponse);
+    }
+  };
+
+  if (data) {
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+    xhr.setRequestHeader('X-CSRFToken', csrf_token);
+    // always add CSRF token
+    // data += '&csrfmiddlewaretoken=' + csrf_token;
+    xhr.send(data);
+  } else {
+    xhr.send();
+  }
+}
+
+function loadBaseUrls(callback) {
+  makeJSONRequest('GET', latest_base_url, function(rsp) {
+    base_urls = rsp;
+    callback();
+  });
+}
+
+function prepareLogin() {
+  // Get available servers
+  var servers_url = base_urls['url:servers'];
+  makeJSONRequest('GET', servers_url, function(rsp) {
+    var serversHtml = rsp.data.map(function(s){
+      return '<option value="' + s.id + '">' + s.server + ':' + s.port + '</option>';
+    });
+    document.getElementById('server').innerHTML = serversHtml.join("");
+  });
+
+  // Also get CSRF token needed for login and other POST requests
+  var token_url = base_urls['url:token'];
+  makeJSONRequest('GET', token_url, function(rsp) {
+    csrf_token = rsp.data;
+  });
+}
+
+document.getElementById('server_form').addEventListener('submit', function(event) {
+  event.preventDefault();
+
+  var omeroServer = document.getElementById('base_url').value;
+  console.log('omeroServer', omeroServer);
+
+  makeJSONRequest('GET', omeroServer, function(rsp) {
+    // List of supported versions
+    var versions = rsp.data;
+    // Get base_url from last version in the list
+    latest_base_url = versions[versions.length-1]["url:base"];
+    showResponse('Connecting to ' + latest_base_url);
+
+    // Get the list of top-level urls as starting points, then prepare login form
+    loadBaseUrls(prepareLogin);
+  });
 
   return false;
 });
 
 
-// var xhr = createCORSRequest('GET', "http://localhost:4080/api/");
-// if (!xhr) {
-//   throw new Error('CORS not supported');
-// }
+document.getElementById('login_form').addEventListener('submit', function(event) {
+  event.preventDefault();
 
+  var login_url = base_urls['url:login'];
 
-// xhr.onload = function() {
-//  var responseText = xhr.responseText;
-//  console.log(responseText);
-//  // process the response.
-//  // document.write(responseText);
-// };
+  var fields = ['username', 'password', 'server'];
+  var data = fields.map(function(f){
+    return f + '=' + document.getElementById(f).value
+  });
+  data = data.join('&');
+  console.log(data);
 
-// xhr.onerror = function() {
-//   console.log('There was an error!');
-// };
+  makeJSONRequest('POST', login_url, function(rsp) {
+    // Will get eventContext if login OK
+    console.log(rsp);
+    
+  }, data);
 
-
-
+  return false;
+});
 
 </script>
 
