@@ -2,33 +2,75 @@
 
 <html>
 
+<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
 <style>
 
-#base_url {
-  width: 300px
+#base_url_container {
+  z-index: 100;
+}
+
+.full_page {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  z-index: 0;
+  background-color: #eee;
+}
+
+.full_page input {
+  margin-bottom: 20px;
+  padding: 10px;
+  font-size: 16px;
+  height: auto;
+}
+
+#username {
+  margin-bottom: 5px;
+}
+
+body {
+  background-color: #eee;
+}
+
+#server_form, #login_form {
+  max-width: 430px;
+  padding-top: 55px;
+  margin: 0 auto;
+
 }
 
 </style>
 
 <body>
 
-  <form id="server_form">
-    <input id="base_url" type="text" name="base_url" placeholder="http://localhost:4080/api/">
-    <button type="submit">Load</button>
-  </form>
+  <div id="base_url_container" class="full_page container">
+    <form id="server_form">
+      <h2>Enter OMERO.web url</h2>
+      <input id="base_url" type="text" class="form-control" placeholder="e.g. http://localhost:4080/" required autofocus>
+      <button class="btn btn-lg btn-primary btn-block" type="submit">Connect</button>
+    </form>
+  </div>
 
-  <hr>
+  <div id="login_container" class="full_page container">
+    <form id="login_form">
+      <h2>Login to OMERO</h2>
+      <select id="server"></select>
+      <label for="username" class="sr-only">Username</label>
+      <input id="username" type="text" class="form-control" name="username" placeholder="Username">
+      <label for="password" class="sr-only">Password</label>
+      <input id="password" type="text" class="form-control" name="password" placeholder="Password">
+      <button class="btn btn-lg btn-primary btn-block" type="submit">Login</button>
+    </form>
+  </div>
 
-  <form id="login_form">
-    Server: <select id="server"></select><br>
-    Username: <input id="username" type="text" name="username" placeholder="username"><br>
-    Password: <input id="password" type="text" name="password" placeholder="password">
-    <button type="submit">Login</button>
-  </form>
+<!--   <div id="response">
+  </div>
 
-  <hr>
+  <hr> -->
 
-  <div id="response">
+  <div id="projects">
   </div>
 
 <script>
@@ -39,22 +81,19 @@ var csrf_token;
 
 function showResponse(text) {
 
-  document.getElementById('response').innerHTML = text;
+  // document.getElementById('response').innerHTML = text;
 }
 
 function createCORSRequest(method, url) {
   var xhr = new XMLHttpRequest();
   if ("withCredentials" in xhr) {
-    // Check if the XMLHttpRequest object has a "withCredentials" property.
-    // "withCredentials" only exists on XMLHTTPRequest2 objects.
+    xhr.withCredentials = true;
     xhr.open(method, url, true);
   } else if (typeof XDomainRequest != "undefined") {
-    // Otherwise, check if XDomainRequest.
-    // XDomainRequest only exists in IE, and is IE's way of making CORS requests.
     xhr = new XDomainRequest();
     xhr.open(method, url);
   } else {
-    // Otherwise, CORS is not supported by the browser.
+    // CORS is not supported by the browser.
     xhr = null;
   }
 
@@ -65,25 +104,26 @@ function createCORSRequest(method, url) {
 }
 
 function makeJSONRequest(method, url, callback, data) {
-  console.log(method, url);
   var xhr = createCORSRequest(method, url);
 
   xhr.onload = function() {
     var responseText = xhr.responseText;
     var jsonResponse = JSON.parse(responseText);
-    console.log(jsonResponse);
+    if (jsonResponse.message) {
+      showResponse(jsonResponse.message);
+    } else {
+      showResponse("");
+    }
     // handle the response.
     if (callback) {
       callback(jsonResponse);
     }
   };
 
+  xhr.setRequestHeader('x-csrftoken', csrf_token);
+
   if (data) {
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-
-    xhr.setRequestHeader('X-CSRFToken', csrf_token);
-    // always add CSRF token
-    // data += '&csrfmiddlewaretoken=' + csrf_token;
     xhr.send(data);
   } else {
     xhr.send();
@@ -114,12 +154,25 @@ function prepareLogin() {
   });
 }
 
+function loadProjects() {
+  var projects_url = base_urls['url:projects'];
+  makeJSONRequest('GET', projects_url, function(rsp) {
+    // hide login form
+    document.getElementById('login_container').style.display = 'none';
+    var projectsHtml = rsp.data.map(function(p){
+      return '<p>' + p['@id'] + ':' + p.Name + '</p>';
+    });
+    document.getElementById('projects').innerHTML = projectsHtml.join("");
+  });
+}
+
 document.getElementById('server_form').addEventListener('submit', function(event) {
   event.preventDefault();
 
   var omeroServer = document.getElementById('base_url').value;
-  console.log('omeroServer', omeroServer);
-
+  omeroServer += 'api/';
+  // hide form
+  document.getElementById('base_url_container').style.display = 'none';
   makeJSONRequest('GET', omeroServer, function(rsp) {
     // List of supported versions
     var versions = rsp.data;
@@ -150,7 +203,10 @@ document.getElementById('login_form').addEventListener('submit', function(event)
   makeJSONRequest('POST', login_url, function(rsp) {
     // Will get eventContext if login OK
     console.log(rsp);
-    
+
+    var ctx = rsp['eventContext'];
+    showResponse("Session created: uuid: " + ctx['sessionUuid'] + " in Group: " + ctx['groupName'])
+    loadProjects();
   }, data);
 
   return false;
