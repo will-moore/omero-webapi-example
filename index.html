@@ -10,6 +10,10 @@
   z-index: 100;
 }
 
+#login_container {
+  display: none;
+}
+
 .full_page {
   height: 100%;
   width: 100%;
@@ -24,6 +28,10 @@
   padding: 10px;
   font-size: 16px;
   height: auto;
+}
+
+.navbar {
+  z-index: 0;
 }
 
 #username {
@@ -65,24 +73,38 @@ body {
     </form>
   </div>
 
-<!--   <div id="response">
-  </div>
 
-  <hr> -->
+  <nav class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <a class="navbar-brand" href="#">OMERO</a>
+      </div>
+      <div id="navbar" class="collapse navbar-collapse">
+        <form class="navbar-form navbar-right" >
+          <button id="logout_button" type="submit" class="btn btn-link">Log out</button>
+        </form>
+        <ul class="nav navbar-nav navbar-right">
+          <li><a id="logged_in_user" href="#"></a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
 
-  <div id="projects">
+  <div class="container" style="margin-top: 50px">
+    <div class="starter-template">
+      <h1>Projects</h1>
+      <div id="projects">
+      </div>
+    </div>
   </div>
 
 <script>
 
+var omeroweb_url;
 var latest_base_url;
 var base_urls;
 var csrf_token;
 
-function showResponse(text) {
-
-  // document.getElementById('response').innerHTML = text;
-}
 
 function createCORSRequest(method, url) {
   var xhr = new XMLHttpRequest();
@@ -107,20 +129,27 @@ function makeJSONRequest(method, url, callback, data) {
   var xhr = createCORSRequest(method, url);
 
   xhr.onload = function() {
+    console.log(xhr);
+    // handle the response (assumes we're getting JSON data)
     var responseText = xhr.responseText;
     var jsonResponse = JSON.parse(responseText);
-    if (jsonResponse.message) {
-      showResponse(jsonResponse.message);
-    } else {
-      showResponse("");
+    // If not logged-in, show login form
+    if (xhr.status === 403 && jsonResponse.message === "Not logged in") {
+      prepareLogin();
     }
-    // handle the response.
-    if (callback) {
-      callback(jsonResponse);
+    // status OK - call the callback()
+    else if (xhr.status === 200) {
+      if (callback) {
+        callback(jsonResponse);
+      }
+    } else {
+      console.log("Error:", xhr)
     }
   };
 
-  xhr.setRequestHeader('x-csrftoken', csrf_token);
+  if (method !== 'GET') {
+    xhr.setRequestHeader('x-csrftoken', csrf_token);
+  }
 
   if (data) {
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -138,6 +167,8 @@ function loadBaseUrls(callback) {
 }
 
 function prepareLogin() {
+  // show login form
+  document.getElementById('login_container').style.display = 'block';
   // Get available servers
   var servers_url = base_urls['url:servers'];
   makeJSONRequest('GET', servers_url, function(rsp) {
@@ -169,19 +200,18 @@ function loadProjects() {
 document.getElementById('server_form').addEventListener('submit', function(event) {
   event.preventDefault();
 
-  var omeroServer = document.getElementById('base_url').value;
-  omeroServer += 'api/';
+  omeroweb_url = document.getElementById('base_url').value;
   // hide form
   document.getElementById('base_url_container').style.display = 'none';
-  makeJSONRequest('GET', omeroServer, function(rsp) {
+  makeJSONRequest('GET', omeroweb_url + 'api/', function(rsp) {
     // List of supported versions
     var versions = rsp.data;
     // Get base_url from last version in the list
     latest_base_url = versions[versions.length-1]["url:base"];
-    showResponse('Connecting to ' + latest_base_url);
 
-    // Get the list of top-level urls as starting points, then prepare login form
-    loadBaseUrls(prepareLogin);
+    // Get the list of top-level urls as starting points,
+    // then load Projects (will show Login form if we're not logged in)
+    loadBaseUrls(loadProjects);
   });
 
   return false;
@@ -204,13 +234,24 @@ document.getElementById('login_form').addEventListener('submit', function(event)
     // Will get eventContext if login OK
     console.log(rsp);
 
+    // Show username in top header
     var ctx = rsp['eventContext'];
-    showResponse("Session created: uuid: " + ctx['sessionUuid'] + " in Group: " + ctx['groupName'])
+    document.getElementById('logged_in_user').innerHTML = ctx['userName'];
+
     loadProjects();
   }, data);
 
   return false;
 });
+
+document.getElementById('logout_button').addEventListener('click', function(event) {
+  event.preventDefault()
+  var logout_url = omeroweb_url + 'webclient/logout/';
+  makeJSONRequest('POST', logout_url, function(rsp) {
+    console.log("LOGGED OUT")
+  });
+  return false;
+})
 
 </script>
 
